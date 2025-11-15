@@ -1,0 +1,23 @@
+# General
+.DS_Store
+Thumbs.db
+.vscode/
+.env
+.env.*
+
+# Hardhat/Node
+contracts/node_modules/
+contracts/artifacts/
+contracts/cache/
+contracts/typechain/
+contracts/.openzeppelin/
+contracts/coverage/
+
+# Build outputs
+contracts/dist/
+contracts/coverage.json
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
