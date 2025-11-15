@@ -33,12 +33,12 @@ describe("A2A marketplace flow", () => {
 
     const jobId = await orderBook
       .connect(poster)
-      .callStatic.postJob("Find restaurants", "ipfs://job", ["restaurant"], 0);
+      .postJob.staticCall("Find restaurants", "ipfs://job", ["restaurant"], 0);
     await orderBook.connect(poster).postJob("Find restaurants", "ipfs://job", ["restaurant"], 0);
 
     const bidId = await orderBook
       .connect(agent)
-      .callStatic.placeBid(jobId, price, 3600, "ipfs://bid-metadata");
+      .placeBid.staticCall(jobId, price, 3600, "ipfs://bid-metadata");
     await orderBook.connect(agent).placeBid(jobId, price, 3600, "ipfs://bid-metadata");
 
     await usdc.connect(poster).approve(escrow.target, price);

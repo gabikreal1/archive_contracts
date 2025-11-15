@@ -88,10 +88,30 @@ This PRD covers all smart contracts required to enable an agent-to-agent marketp
 - **Key Functions:** getJob, getBids, getDelivery
 
 
-### 2.6. (Future) DisputeResolution/Insurance Pool
+### 2.6. DisputeResolution
 
-- **Purpose:** Handle disputes, slash agent rep, fund user reimbursements
-- **Status:** Post-MVP
+- **Purpose:** Handle disputes when user is unsatisfied with delivery or agent fails to deliver
+- **Core Data:**
+    - disputeId: bytes32
+    - jobId: bytes32
+    - initiator: address (user or agent)
+    - reason: string/IPFS hash (description of dispute)
+    - evidence: string/IPFS hash (supporting materials)
+    - status: enum (PENDING/UNDER_REVIEW/RESOLVED_USER/RESOLVED_AGENT/DISMISSED)
+    - resolutionMessage: string/IPFS hash (admin decision explanation)
+    - createdAt: uint256
+    - resolvedAt: uint256
+- **Key Functions:** 
+    - raiseDispute(jobId, reason, evidence) - User/Agent initiates dispute
+    - submitEvidence(disputeId, evidence) - Add additional evidence
+    - resolveDispute(disputeId, decision, message) - Admin wallet decides outcome
+- **Resolution Process:**
+    1. User or agent raises dispute with IPFS link to detailed reason
+    2. Both parties can submit additional evidence (IPFS links)
+    3. Platform admin wallet reviews and submits resolution decision with IPFS link explaining reasoning
+    4. Based on decision: refund to user OR release payment to agent
+    5. Reputation adjusted accordingly (slash agent rep if at fault, no penalty if user fault)
+- **Notes:** Admin wallet has special role for dispute resolution; decisions are transparent via IPFS messages
 
 ***
 
@@ -113,11 +133,13 @@ This PRD covers all smart contracts required to enable an agent-to-agent marketp
 - id: string/bytes32
 - jobId: bytes32
 - bidder: address
-- price: uint256
+- price: uint256 (must be > 0)
 - deliveryTime: uint256
 - metadata: string/IPFS hash (optional)
 - accepted: bool
 - createdAt: uint256
+
+**Constraint:** Each agent can only place ONE bid per job (prevents spam bidding)
 
 
 ### **Agent (AgentRegistry)**
@@ -156,6 +178,18 @@ This PRD covers all smart contracts required to enable an agent-to-agent marketp
 - agent: address
 - proofHash: bytes32 (IPFS CID for images, documents, code or result)
 - deliveredAt: uint256
+
+### **Dispute**
+
+- disputeId: bytes32
+- jobId: bytes32
+- initiator: address
+- reason: string/IPFS hash
+- evidence: string[] (array of IPFS hashes for multiple evidence submissions)
+- status: enum (PENDING/UNDER_REVIEW/RESOLVED_USER/RESOLVED_AGENT/DISMISSED)
+- resolutionMessage: string/IPFS hash
+- createdAt: uint256
+- resolvedAt: uint256
 
 ***
 
@@ -208,9 +242,17 @@ flowchart TD
 
 - **OrderBook:** Public for job post/bid/accept, restrictions for submitDelivery
 - **Escrow:** Only user funds/approves escrow, only user/admin releases or refunds
-- **AgentRegistry:** Only agent owner can update; everyone can query
+- **AgentRegistry:** Only agent owner can update; everyone can query (with pagination)
 - **ReputationToken:** Only Escrow contract (or admin) can mint/burn stats/tokens
 - **JobRegistry:** Everyone can query; only marketplace contracts update
+- **DisputeResolution:** User/Agent can raise disputes; only admin wallet can resolve disputes
+
+### **Special Roles:**
+- **Admin Wallet:** Platform operator with authority to:
+    - Resolve disputes with IPFS-linked decisions
+    - Update contract configurations
+    - Handle emergency situations
+- **Reputation Oracle:** Contract/address authorized to sync reputation to AgentRegistry
 
 ***
 
@@ -222,7 +264,29 @@ flowchart TD
 - Deploy OrderBook, link JobRegistry and AgentRegistry
 - Deploy Escrow, link USDC and JobRegistry
 - Deploy ReputationToken, link Escrow
+- Configure admin wallet for dispute resolution
 - Set up event listeners off-chain for indexing/caching
+
+## 9. Contract Constraints and Validations
+
+### **Bidding Rules:**
+- ✅ Price must be greater than 0
+- ✅ One bid per agent per job (prevents spam)
+- ✅ Agent must be Active status in AgentRegistry
+- ✅ Job must be in OPEN status
+
+### **Query Optimizations:**
+- ✅ Agent listing uses pagination (offset, limit)
+- ✅ Prevents gas exhaustion on large datasets
+
+### **Dispute Flow:**
+1. Job in DELIVERED or IN_PROGRESS status
+2. User/Agent raises dispute with reason (IPFS)
+3. Status changes to DISPUTED
+4. Escrow funds remain locked
+5. Admin reviews evidence and submits decision (IPFS)
+6. Resolution executed: refund OR release payment
+7. Reputation updated based on fault determination
 <span style="display:none">[^1][^11][^2][^3][^4][^6][^7][^8][^9]</span>
 
 <div align="center">⁂</div>

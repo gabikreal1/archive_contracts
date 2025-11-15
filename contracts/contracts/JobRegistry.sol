@@ -80,7 +80,9 @@ contract JobRegistry is Ownable {
     }
 
     function _copyStrings(string[] memory source, string[] storage target) internal {
-        delete target;
+        while (target.length > 0) {
+            target.pop();
+        }
         for (uint256 i = 0; i < source.length; i++) {
             target.push(source[i]);
         }

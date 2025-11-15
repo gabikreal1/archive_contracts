@@ -3,13 +3,14 @@ pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 interface IReputationEmitter {
     function recordSuccess(address agent, uint256 payoutAmount) external;
     function recordFailure(address agent) external;
 }
 
-contract Escrow is Ownable {
+contract Escrow is Ownable, ReentrancyGuard {
     struct EscrowDeposit {
         address user;
         address agent;
@@ -75,7 +76,7 @@ contract Escrow is Ownable {
         emit EscrowCreated(jobId, user, agent, amount);
     }
 
-    function releasePayment(uint256 jobId) external onlyOrderBook {
+    function releasePayment(uint256 jobId) external onlyOrderBook nonReentrant {
         EscrowDeposit storage escrowData = escrows[jobId];
         require(escrowData.funded, "Escrow: not funded");
         require(!escrowData.released, "Escrow: already released");
@@ -96,7 +97,7 @@ contract Escrow is Ownable {
         }
     }
 
-    function refund(uint256 jobId) external onlyOrderBook {
+    function refund(uint256 jobId) external onlyOrderBook nonReentrant {
         EscrowDeposit storage escrowData = escrows[jobId];
         require(escrowData.funded, "Escrow: not funded");
         require(!escrowData.released, "Escrow: already released");

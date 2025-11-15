@@ -28,11 +28,21 @@ interface IAgentRegistryView {
 contract OrderBook is Ownable {
     using JobTypes for JobTypes.JobStatus;
 
+    enum DisputeStatus {
+        NONE,
+        PENDING,
+        UNDER_REVIEW,
+        RESOLVED_USER,
+        RESOLVED_AGENT,
+        DISMISSED
+    }
+
     struct JobState {
         address poster;
         JobTypes.JobStatus status;
         uint256 acceptedBidId;
         bytes32 deliveryProof;
+        bool hasDispute;
     }
 
     struct Bid {
@@ -47,12 +57,28 @@ contract OrderBook is Ownable {
         uint256 createdAt;
     }
 
+    struct Dispute {
+        uint256 disputeId;
+        uint256 jobId;
+        address initiator;
+        string reason;
+        string[] evidence;
+        DisputeStatus status;
+        string resolutionMessage;
+        uint256 createdAt;
+        uint256 resolvedAt;
+    }
+
     uint256 private nextJobId = 1;
     uint256 private nextBidId = 1;
+    uint256 private nextDisputeId = 1;
 
     mapping(uint256 => JobState) private jobStates;
     mapping(uint256 => Bid) private bidsById;
     mapping(uint256 => uint256[]) private jobBidIds;
+    mapping(uint256 => mapping(address => bool)) private agentHasBid;
+    mapping(uint256 => Dispute) private disputes;
+    mapping(uint256 => uint256) private jobToDispute;
 
     IJobRegistry public jobRegistry;
     IEscrow public escrow;
@@ -64,6 +90,9 @@ contract OrderBook is Ownable {
     event BidAccepted(uint256 indexed jobId, uint256 indexed bidId, address poster, address agent);
     event DeliverySubmitted(uint256 indexed jobId, uint256 indexed bidId, bytes32 proofHash);
     event JobApproved(uint256 indexed jobId, uint256 indexed bidId);
+    event DisputeRaised(uint256 indexed disputeId, uint256 indexed jobId, address indexed initiator, string reason);
+    event EvidenceSubmitted(uint256 indexed disputeId, address indexed submitter, string evidence);
+    event DisputeResolved(uint256 indexed disputeId, uint256 indexed jobId, DisputeStatus resolution, string message);
 
     constructor(address initialOwner, IJobRegistry registry) Ownable(initialOwner) {
         jobRegistry = registry;
@@ -92,7 +121,8 @@ contract OrderBook is Ownable {
             poster: msg.sender,
             status: JobTypes.JobStatus.OPEN,
             acceptedBidId: 0,
-            deliveryProof: bytes32(0)
+            deliveryProof: bytes32(0),
+            hasDispute: false
         });
 
         string[] memory tagsCopy = tags;
@@ -118,6 +148,8 @@ contract OrderBook is Ownable {
         JobState storage job = jobStates[jobId];
         require(job.poster != address(0), "OrderBook: job not found");
         require(job.status == JobTypes.JobStatus.OPEN, "OrderBook: job not open");
+        require(price > 0, "OrderBook: bid price must be positive");
+        require(!agentHasBid[jobId][msg.sender], "OrderBook: agent already bid on this job");
         if (address(agentRegistry) != address(0)) {
             require(agentRegistry.isAgentActive(msg.sender), "OrderBook: agent not active");
         }
@@ -138,6 +170,7 @@ contract OrderBook is Ownable {
         bid.createdAt = block.timestamp;
 
         jobBidIds[jobId].push(bidId);
+        agentHasBid[jobId][msg.sender] = true;
 
         string memory metaCopy = metadataURI;
         JobTypes.BidMetadata memory indexedBid = JobTypes.BidMetadata({
@@ -205,10 +238,10 @@ contract OrderBook is Ownable {
         emit JobApproved(jobId, job.acceptedBidId);
     }
 
-    function refundJob(uint256 jobId) external {
+    function refundJob(uint256 jobId) external onlyOwner {
         JobState storage job = jobStates[jobId];
-        require(job.poster == msg.sender || msg.sender == owner(), "OrderBook: not authorized");
         require(job.status == JobTypes.JobStatus.IN_PROGRESS || job.status == JobTypes.JobStatus.DELIVERED, "OrderBook: cannot refund");
+        require(job.hasDispute, "OrderBook: no dispute raised");
 
         job.status = JobTypes.JobStatus.DISPUTED;
         jobRegistry.updateJobStatus(jobId, JobTypes.JobStatus.DISPUTED);
@@ -222,5 +255,97 @@ contract OrderBook is Ownable {
         for (uint256 i = 0; i < bidIds.length; i++) {
             jobBids[i] = bidsById[bidIds[i]];
         }
+    }
+
+    function raiseDispute(uint256 jobId, string calldata reason, string calldata evidence) external returns (uint256 disputeId) {
+        JobState storage job = jobStates[jobId];
+        require(job.poster != address(0), "OrderBook: job not found");
+        require(!job.hasDispute, "OrderBook: dispute already raised");
+        require(
+            job.status == JobTypes.JobStatus.IN_PROGRESS || job.status == JobTypes.JobStatus.DELIVERED,
+            "OrderBook: invalid status for dispute"
+        );
+
+        Bid storage acceptedBid = bidsById[job.acceptedBidId];
+        require(
+            msg.sender == job.poster || msg.sender == acceptedBid.bidder,
+            "OrderBook: only poster or agent can raise dispute"
+        );
+
+        disputeId = nextDisputeId++;
+        Dispute storage dispute = disputes[disputeId];
+        dispute.disputeId = disputeId;
+        dispute.jobId = jobId;
+        dispute.initiator = msg.sender;
+        dispute.reason = reason;
+        dispute.evidence.push(evidence);
+        dispute.status = DisputeStatus.PENDING;
+        dispute.createdAt = block.timestamp;
+
+        job.hasDispute = true;
+        jobToDispute[jobId] = disputeId;
+
+        emit DisputeRaised(disputeId, jobId, msg.sender, reason);
+    }
+
+    function submitEvidence(uint256 disputeId, string calldata evidence) external {
+        Dispute storage dispute = disputes[disputeId];
+        require(dispute.status == DisputeStatus.PENDING || dispute.status == DisputeStatus.UNDER_REVIEW, "OrderBook: dispute not active");
+
+        JobState storage job = jobStates[dispute.jobId];
+        Bid storage acceptedBid = bidsById[job.acceptedBidId];
+        require(
+            msg.sender == job.poster || msg.sender == acceptedBid.bidder,
+            "OrderBook: only involved parties can submit evidence"
+        );
+
+        dispute.evidence.push(evidence);
+        emit EvidenceSubmitted(disputeId, msg.sender, evidence);
+    }
+
+    function resolveDispute(uint256 disputeId, DisputeStatus resolution, string calldata message) external onlyOwner {
+        Dispute storage dispute = disputes[disputeId];
+        require(
+            dispute.status == DisputeStatus.PENDING || dispute.status == DisputeStatus.UNDER_REVIEW,
+            "OrderBook: dispute already resolved"
+        );
+        require(
+            resolution == DisputeStatus.RESOLVED_USER || 
+            resolution == DisputeStatus.RESOLVED_AGENT || 
+            resolution == DisputeStatus.DISMISSED,
+            "OrderBook: invalid resolution status"
+        );
+
+        dispute.status = resolution;
+        dispute.resolutionMessage = message;
+        dispute.resolvedAt = block.timestamp;
+
+        uint256 jobId = dispute.jobId;
+        JobState storage job = jobStates[jobId];
+
+        if (resolution == DisputeStatus.RESOLVED_USER) {
+            // Refund user
+            job.status = JobTypes.JobStatus.DISPUTED;
+            jobRegistry.updateJobStatus(jobId, JobTypes.JobStatus.DISPUTED);
+            escrow.refund(jobId);
+        } else if (resolution == DisputeStatus.RESOLVED_AGENT) {
+            // Release payment to agent
+            job.status = JobTypes.JobStatus.COMPLETED;
+            jobRegistry.updateJobStatus(jobId, JobTypes.JobStatus.COMPLETED);
+            escrow.releasePayment(jobId);
+        }
+        // If DISMISSED, no payment action taken
+
+        emit DisputeResolved(disputeId, jobId, resolution, message);
+    }
+
+    function getDispute(uint256 disputeId) external view returns (Dispute memory) {
+        return disputes[disputeId];
+    }
+
+    function getJobDispute(uint256 jobId) external view returns (Dispute memory) {
+        uint256 disputeId = jobToDispute[jobId];
+        require(disputeId != 0, "OrderBook: no dispute for this job");
+        return disputes[disputeId];
     }
 }

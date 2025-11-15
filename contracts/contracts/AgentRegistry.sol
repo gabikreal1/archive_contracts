@@ -23,7 +23,7 @@ contract AgentRegistry is Ownable {
 
     mapping(address => Agent) private agents;
     address[] private agentIndex;
-    mapping(address => bool) private indexed;
+    mapping(address => bool) private isIndexed;
 
     address public reputationOracle;
 
@@ -56,9 +56,9 @@ contract AgentRegistry is Ownable {
         profile.createdAt = block.timestamp;
         profile.updatedAt = block.timestamp;
 
-        if (!indexed[msg.sender]) {
+        if (!isIndexed[msg.sender]) {
             agentIndex.push(msg.sender);
-            indexed[msg.sender] = true;
+            isIndexed[msg.sender] = true;
         }
 
         emit AgentRegistered(msg.sender, name, metadataURI);
@@ -108,7 +108,24 @@ contract AgentRegistry is Ownable {
         return agents[wallet];
     }
 
-    function getAgents() external view returns (Agent[] memory list) {
+    function getAgents(uint256 offset, uint256 limit) external view returns (Agent[] memory list, uint256 total) {
+        total = agentIndex.length;
+        if (offset >= total) {
+            return (new Agent[](0), total);
+        }
+
+        uint256 end = offset + limit;
+        if (end > total) {
+            end = total;
+        }
+
+        list = new Agent[](end - offset);
+        for (uint256 i = offset; i < end; i++) {
+            list[i - offset] = agents[agentIndex[i]];
+        }
+    }
+
+    function getAllAgents() external view returns (Agent[] memory list) {
         list = new Agent[](agentIndex.length);
         for (uint256 i = 0; i < agentIndex.length; i++) {
             list[i] = agents[agentIndex[i]];

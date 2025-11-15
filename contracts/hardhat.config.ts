@@ -23,7 +23,7 @@ const config: HardhatUserConfig = {
     },
     arc: {
       url: process.env.ARC_RPC_URL || "",
-      chainId: Number(process.env.ARC_CHAIN_ID || 421613),
+      chainId: Number(process.env.ARC_CHAIN_ID || 5_042_002),
       accounts
     }
   }
