@@ -52,7 +52,8 @@ contract OrderBook is Ownable {
         uint256 price;
         uint64 deliveryTime;
         uint256 reputation;
-        string metadataURI;
+        string metadataURI;        // Agent's bid details (includes questions)
+        string responseURI;        // Poster's answers to agent's questions
         bool accepted;
         uint256 createdAt;
     }
@@ -88,6 +89,7 @@ contract OrderBook is Ownable {
     event JobPosted(uint256 indexed jobId, address indexed poster);
     event BidPlaced(uint256 indexed jobId, uint256 indexed bidId, address bidder, uint256 price);
     event BidAccepted(uint256 indexed jobId, uint256 indexed bidId, address poster, address agent);
+    event BidResponseSubmitted(uint256 indexed jobId, uint256 indexed bidId, string responseURI);
     event DeliverySubmitted(uint256 indexed jobId, uint256 indexed bidId, bytes32 proofHash);
     event JobApproved(uint256 indexed jobId, uint256 indexed bidId);
     event DisputeRaised(uint256 indexed disputeId, uint256 indexed jobId, address indexed initiator, string reason);
@@ -188,7 +190,7 @@ contract OrderBook is Ownable {
         emit BidPlaced(jobId, bidId, msg.sender, price);
     }
 
-    function acceptBid(uint256 jobId, uint256 bidId) external {
+    function acceptBid(uint256 jobId, uint256 bidId, string calldata responseURI) external {
         JobState storage job = jobStates[jobId];
         require(job.poster == msg.sender, "OrderBook: not poster");
         require(job.status == JobTypes.JobStatus.OPEN, "OrderBook: job not open");
@@ -199,6 +201,7 @@ contract OrderBook is Ownable {
         require(address(escrow) != address(0), "OrderBook: escrow not set");
 
         bid.accepted = true;
+        bid.responseURI = responseURI;  // Store poster's answers
         job.status = JobTypes.JobStatus.IN_PROGRESS;
         job.acceptedBidId = bidId;
 
@@ -206,6 +209,9 @@ contract OrderBook is Ownable {
         escrow.lockFunds(jobId, msg.sender, bid.bidder, bid.price);
 
         emit BidAccepted(jobId, bidId, msg.sender, bid.bidder);
+        if (bytes(responseURI).length > 0) {
+            emit BidResponseSubmitted(jobId, bidId, responseURI);
+        }
     }
 
     function submitDelivery(uint256 jobId, bytes32 proofHash) external {

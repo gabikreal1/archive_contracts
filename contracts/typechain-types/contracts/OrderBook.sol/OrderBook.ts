@@ -88,6 +88,7 @@ export declare namespace OrderBook {
     deliveryTime: BigNumberish;
     reputation: BigNumberish;
     metadataURI: string;
+    responseURI: string;
     accepted: boolean;
     createdAt: BigNumberish;
   };
@@ -100,6 +101,7 @@ export declare namespace OrderBook {
     deliveryTime: bigint,
     reputation: bigint,
     metadataURI: string,
+    responseURI: string,
     accepted: boolean,
     createdAt: bigint
   ] & {
@@ -110,6 +112,7 @@ export declare namespace OrderBook {
     deliveryTime: bigint;
     reputation: bigint;
     metadataURI: string;
+    responseURI: string;
     accepted: boolean;
     createdAt: bigint;
   };
@@ -146,6 +149,7 @@ export interface OrderBookInterface extends Interface {
     nameOrSignatureOrTopic:
       | "BidAccepted"
       | "BidPlaced"
+      | "BidResponseSubmitted"
       | "DeliverySubmitted"
       | "DisputeRaised"
       | "DisputeResolved"
@@ -157,7 +161,7 @@ export interface OrderBookInterface extends Interface {
 
   encodeFunctionData(
     functionFragment: "acceptBid",
-    values: [BigNumberish, BigNumberish]
+    values: [BigNumberish, BigNumberish, string]
   ): string;
   encodeFunctionData(
     functionFragment: "agentRegistry",
@@ -351,6 +355,24 @@ export namespace BidPlacedEvent {
   export type LogDescription = TypedLogDescription<Event>;
 }
 
+export namespace BidResponseSubmittedEvent {
+  export type InputTuple = [
+    jobId: BigNumberish,
+    bidId: BigNumberish,
+    responseURI: string
+  ];
+  export type OutputTuple = [jobId: bigint, bidId: bigint, responseURI: string];
+  export interface OutputObject {
+    jobId: bigint;
+    bidId: bigint;
+    responseURI: string;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
 export namespace DeliverySubmittedEvent {
   export type InputTuple = [
     jobId: BigNumberish,
@@ -524,7 +546,7 @@ export interface OrderBook extends BaseContract {
   ): Promise<this>;
 
   acceptBid: TypedContractMethod<
-    [jobId: BigNumberish, bidId: BigNumberish],
+    [jobId: BigNumberish, bidId: BigNumberish, responseURI: string],
     [void],
     "nonpayable"
   >;
@@ -649,7 +671,7 @@ export interface OrderBook extends BaseContract {
   getFunction(
     nameOrSignature: "acceptBid"
   ): TypedContractMethod<
-    [jobId: BigNumberish, bidId: BigNumberish],
+    [jobId: BigNumberish, bidId: BigNumberish, responseURI: string],
     [void],
     "nonpayable"
   >;
@@ -787,6 +809,13 @@ export interface OrderBook extends BaseContract {
     BidPlacedEvent.OutputObject
   >;
   getEvent(
+    key: "BidResponseSubmitted"
+  ): TypedContractEvent<
+    BidResponseSubmittedEvent.InputTuple,
+    BidResponseSubmittedEvent.OutputTuple,
+    BidResponseSubmittedEvent.OutputObject
+  >;
+  getEvent(
     key: "DeliverySubmitted"
   ): TypedContractEvent<
     DeliverySubmittedEvent.InputTuple,
@@ -857,6 +886,17 @@ export interface OrderBook extends BaseContract {
       BidPlacedEvent.InputTuple,
       BidPlacedEvent.OutputTuple,
       BidPlacedEvent.OutputObject
+    >;
+
+    "BidResponseSubmitted(uint256,uint256,string)": TypedContractEvent<
+      BidResponseSubmittedEvent.InputTuple,
+      BidResponseSubmittedEvent.OutputTuple,
+      BidResponseSubmittedEvent.OutputObject
+    >;
+    BidResponseSubmitted: TypedContractEvent<
+      BidResponseSubmittedEvent.InputTuple,
+      BidResponseSubmittedEvent.OutputTuple,
+      BidResponseSubmittedEvent.OutputObject
     >;
 
     "DeliverySubmitted(uint256,uint256,bytes32)": TypedContractEvent<

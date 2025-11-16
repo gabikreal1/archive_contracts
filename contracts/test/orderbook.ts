@@ -42,7 +42,7 @@ describe("A2A marketplace flow", () => {
     await orderBook.connect(agent).placeBid(jobId, price, 3600, "ipfs://bid-metadata");
 
     await usdc.connect(poster).approve(escrow.target, price);
-    await orderBook.connect(poster).acceptBid(jobId, bidId);
+    await orderBook.connect(poster).acceptBid(jobId, bidId, "ipfs://response-answers");
 
     const escrowBalanceAfterLock = await usdc.balanceOf(escrow.target);
     expect(escrowBalanceAfterLock).to.equal(price);
